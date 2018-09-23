@@ -1,0 +1,4 @@
+﻿  Building Custom Rule E:/Projects/GitHub/TwoAC/third_party/glog/CMakeLists.txt
+  CMake does not need to re-run because E:/Projects/GitHub/TwoAC/third_party/glog/build/CMakeFiles/generate.stamp is up-to-date.
+  utilities_unittest.cc
+  utilities_unittest.vcxproj -> E:\Projects\GitHub\TwoAC\third_party\glog\build\Release\utilities_unittest.exe

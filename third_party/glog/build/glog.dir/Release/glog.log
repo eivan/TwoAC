@@ -1,0 +1,13 @@
+﻿  Building Custom Rule E:/Projects/GitHub/TwoAC/third_party/glog/CMakeLists.txt
+  CMake does not need to re-run because E:/Projects/GitHub/TwoAC/third_party/glog/build/CMakeFiles/generate.stamp is up-to-date.
+  demangle.cc
+  logging.cc
+  raw_logging.cc
+  symbolize.cc
+  utilities.cc
+  vlog_is_on.cc
+  signalhandler.cc
+  Generating Code...
+  port.cc
+     Creating library E:/Projects/GitHub/TwoAC/third_party/glog/build/Release/glog.lib and object E:/Projects/GitHub/TwoAC/third_party/glog/build/Release/glog.exp
+  glog.vcxproj -> E:\Projects\GitHub\TwoAC\third_party\glog\build\Release\glog.dll

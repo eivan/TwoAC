@@ -1,0 +1,12 @@
+﻿  Building Custom Rule C:/Libraries/CPP/glog-master/CMakeLists.txt
+  CMake does not need to re-run because C:/Libraries/CPP/glog-master/build/CMakeFiles/generate.stamp is up-to-date.
+  demangle.cc
+  logging.cc
+  raw_logging.cc
+  symbolize.cc
+  utilities.cc
+  vlog_is_on.cc
+  signalhandler.cc
+  Generating Code...
+  port.cc
+  glog.vcxproj -> C:\Libraries\CPP\glog-master\build\Release\glog.lib
