@@ -73,13 +73,14 @@ namespace TwoAC
 		typedef Eigen::Matrix<T, N, 1, kAlignOrNot> VecX;
 		alignas(kAlignment)Eigen::Matrix<T, N, 1, kAlignOrNot> grad_;
 #endif
+
 	public:
 		enum { DIMENSION = N };
 
 		Dual_Number() : f_() { grad_.setZero(); }
 		template<typename V>
 		explicit Dual_Number(const V& f) { f_ = T(f); grad_.setZero(); }
-		
+
 		// FALLBACK OPERATORS
 		explicit Dual_Number(const Dual_Number<float, N>& f) { f_ = T(f.f()); grad_ = f.grad().cast<T>(); }
 		explicit operator double() const { return double(f_); }
@@ -131,7 +132,7 @@ namespace TwoAC
 		Dual_Number& operator*= (const Dual_Number& rhs)
 		{
 			f_ *= rhs.f_;
-			grad_.noalias() = grad_*rhs.f_ + rhs.grad_*f_;
+			grad_.noalias() = grad_ * rhs.f_ + rhs.grad_*f_;
 			return *this;
 		}
 
@@ -295,9 +296,9 @@ namespace TwoAC
 	bool operator op(const Dual_Number<T, N>& f, int s) { \
 	  return f.f() op s; \
 	}
-	DEFINE_DN_COMPARISON_OPERATOR(< ); 
+	DEFINE_DN_COMPARISON_OPERATOR(< );
 	DEFINE_DN_COMPARISON_OPERATOR(<= );
-	DEFINE_DN_COMPARISON_OPERATOR(> ); 
+	DEFINE_DN_COMPARISON_OPERATOR(> );
 	DEFINE_DN_COMPARISON_OPERATOR(>= );
 	DEFINE_DN_COMPARISON_OPERATOR(== );
 	DEFINE_DN_COMPARISON_OPERATOR(!= );
@@ -308,7 +309,7 @@ namespace TwoAC
 	} \*/
 
 	template<typename T, int N> inline
-	bool operator <(const Dual_Number<T, N>& f, const Dual_Number<T, N>& g) {
+		bool operator <(const Dual_Number<T, N>& f, const Dual_Number<T, N>& g) {
 		if (f.f() < g.f())
 			return true;
 		if (f.f() == g.f() && std::lexicographical_compare(&f.grad()[0], &f.grad()[0] + N, &g.grad()[0], &g.grad()[0] + N))
@@ -317,12 +318,12 @@ namespace TwoAC
 	}
 
 	template<typename T, int N> inline
-	bool operator >(const Dual_Number<T, N>& f, const Dual_Number<T, N>& g) {
+		bool operator >(const Dual_Number<T, N>& f, const Dual_Number<T, N>& g) {
 		return g < f;
 	}
 
 	template<typename T, int N> inline
-	bool operator ==(const Dual_Number<T, N>& f, const Dual_Number<T, N>& g) {
+		bool operator ==(const Dual_Number<T, N>& f, const Dual_Number<T, N>& g) {
 		return f.f() == g.f() && std::equal(&f.grad()[0], &f.grad()[0] + N, &g.grad()[0], &g.grad()[0] + N);
 	}
 
@@ -362,12 +363,12 @@ namespace TwoAC
 
 	inline double normSq(double x) { return Square(x); }
 	template<typename T, int N> inline
-	T normSq(const Dual_Number<T, N>& f)
+		T normSq(const Dual_Number<T, N>& f)
 	{
 		return normSq(f.f()) + f.grad().squaredNorm();
 	}
 
-#pragma region solvers
+#pragma region Solvers
 
 	template <typename FUN, typename V>
 	inline V bisection(const FUN& functor, const V& targetValue, const double epsilon = 1e-12, const int max_iter = 1000)
@@ -379,7 +380,7 @@ namespace TwoAC
 
 		// Perform a bisection until epsilon accuracy is not reached
 		for (int i = 0; i < max_iter && (epsilon < upbound - lowerbound); ++i)
-		//while (epsilon < upbound - lowerbound)
+			//while (epsilon < upbound - lowerbound)
 		{
 			const V mid = V(.5) * (lowerbound + upbound);
 			if (functor(mid) > targetValue)
@@ -404,7 +405,6 @@ namespace TwoAC
 	}
 
 #pragma endregion
-
 
 	template<typename T>
 	struct Ops {
@@ -463,6 +463,8 @@ namespace TwoAC
 			};
 		}
 	};
+
+#pragma region Regular math functions
 
 	// In general, f(a + h) ~= f(a) + f'(a) h, via the chain rule.
 
@@ -599,137 +601,6 @@ namespace TwoAC
 		return Dual_Number<T, N>(ceil(f.f()));
 	}
 
-
-#pragma region Bessel
-
-	// Bessel functions of the first kind with integer order equal to 0, 1, n.
-	//
-	// Microsoft has deprecated the j[0,1,n]() POSIX Bessel functions in favour of
-	// _j[0,1,n]().  Where available on MSVC, use _j[0,1,n]() to avoid deprecated
-	// function errors in client code (the specific warning is suppressed when
-	// Ceres itself is built).
-	inline double BesselJ0(double x) {
-#if defined(_MSC_VER) && _MSC_VER >= 1800
-		return _j0(x);
-#else
-		return j0(x);
-#endif
-	}
-	inline double BesselJ1(double x) {
-#if defined(_MSC_VER) && _MSC_VER >= 1800
-		return _j1(x);
-#else
-		return j1(x);
-#endif
-	}
-	inline double BesselJn(int n, double x) {
-#if defined(_MSC_VER) && _MSC_VER >= 1800
-		return _jn(n, x);
-#else
-		return jn(n, x);
-#endif
-	}
-
-	// For the formulae of the derivatives of the Bessel functions see the book:
-	// Olver, Lozier, Boisvert, Clark, NIST Handbook of Mathematical Functions,
-	// Cambridge University Press 2010.
-	//
-	// Formulae are also available at http://dlmf.nist.gov
-
-	// See formula http://dlmf.nist.gov/10.6#E3
-	// j0(a + h) ~= j0(a) - j1(a) h
-	template <typename T, int N> inline
-		Dual_Number<T, N> BesselJ0(const Dual_Number<T, N>& f) {
-		return{ BesselJ0(f.f()), -BesselJ1(f.f()) * f.grad() };
-	}
-
-	// See formula http://dlmf.nist.gov/10.6#E1
-	// j1(a + h) ~= j1(a) + 0.5 ( j0(a) - j2(a) ) h
-	template <typename T, int N> inline
-		Dual_Number<T, N> BesselJ1(const Dual_Number<T, N>& f) {
-		return{ BesselJ1(f.f()),
-			T(0.5) * (BesselJ0(f.f()) - BesselJn(2, f.f())) * f.grad() };
-	}
-
-	// See formula http://dlmf.nist.gov/10.6#E1
-	// j_n(a + h) ~= j_n(a) + 0.5 ( j_{n-1}(a) - j_{n+1}(a) ) h
-	template <typename T, int N> inline
-		Dual_Number<T, N> BesselJn(int n, const Dual_Number<T, N>& f) {
-		return{ BesselJn(n, f.f()),
-			T(0.5) * (BesselJn(n - 1, f.f()) - BesselJn(n + 1, f.f())) * f.grad() };
-	}
-
-#pragma endregion
-
-#pragma region Dual Number classification
-	// Classification. It is not clear what the appropriate semantics are for
-	// these classifications. This picks that IsFinite and isnormal are "all"
-	// operations, i.e. all elements of the jet must be finite for the jet itself
-	// to be finite (or normal). For IsNaN and IsInfinite, the answer is less
-	// clear. This takes a "any" approach for IsNaN and IsInfinite such that if any
-	// part of a jet is nan or inf, then the entire jet is nan or inf. This leads
-	// to strange situations like a jet can be both IsInfinite and IsNaN, but in
-	// practice the "any" semantics are the most useful for e.g. checking that
-	// derivatives are sane.
-
-	// The jet is finite if all parts of the jet are finite.
-	template <typename T, int N> inline
-		bool isfinite(const Dual_Number<T, N>& f) {
-		if (!isfinite(f.f())) {
-			return false;
-		}
-		for (int i = 0; i < N; ++i) {
-			if (!isfinite(f.grad()[i])) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-
-	// The jet is infinite if any part of the jet is infinite.
-	template <typename T, int N> inline
-		bool IsInfinite(const Dual_Number<T, N>& f) {
-		if (IsInfinite(f.f())) {
-			return true;
-		}
-		for (int i = 0; i < N; i++) {
-			if (IsInfinite(f.grad()[i])) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	// The jet is NaN if any part of the jet is NaN.
-	template <typename T, int N> inline
-		bool IsNaN(const Dual_Number<T, N>& f) {
-		if (IsNaN(f.f())) {
-			return true;
-		}
-		for (int i = 0; i < N; ++i) {
-			if (IsNaN(f.grad()[i])) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	// The jet is normal if all parts of the jet are normal.
-	template <typename T, int N> inline
-		bool IsNormal(const Dual_Number<T, N>& f) {
-		if (!IsNormal(f.f())) {
-			return false;
-		}
-		for (int i = 0; i < N; ++i) {
-			if (!IsNormal(f.grad()[i])) {
-				return false;
-			}
-		}
-		return true;
-	}
-#pragma endregion
-
 	// atan2(b + db, a + da) ~= atan2(b, a) + (- b da + a db) / (a^2 + b^2)
 	//
 	// In words: the rate of change of theta is 1/r times the rate of
@@ -758,20 +629,20 @@ namespace TwoAC
 	// pow -- base is a constant, exponent is a differentiable function.
 	// (a)^(p+dp) ~= a^p + a^p log(a) dp
 	template <typename T, int N> inline
-		Dual_Number<T, N> pow(double f, const Dual_Number<T, N>& g) {
-		T const tmp = pow(f, g.f());
-		return{ tmp, log(f) * tmp * g.grad() };
+	Dual_Number<T, N> pow(double f, const Dual_Number<T, N>& g) {
+	T const tmp = pow(f, g.f());
+	return{ tmp, log(f) * tmp * g.grad() };
 	}
 
 	// pow -- both base and exponent are differentiable functions.
 	// (a+da)^(b+db) ~= a^b + b * a^(b-1) da + a^b log(a) * db
-		template <typename T, int N> inline
-		Dual_Number<T, N> pow(const Dual_Number<T, N>& f, const Dual_Number<T, N>& g) {
-		T const tmp1 = pow(f.f(), g.f());
-		T const tmp2 = g.f() * pow(f.f(), g.f() - T(1.0));
-		T const tmp3 = tmp1 * log(f.f());
+	template <typename T, int N> inline
+	Dual_Number<T, N> pow(const Dual_Number<T, N>& f, const Dual_Number<T, N>& g) {
+	T const tmp1 = pow(f.f(), g.f());
+	T const tmp2 = g.f() * pow(f.f(), g.f() - T(1.0));
+	T const tmp3 = tmp1 * log(f.f());
 
-		return{ tmp1, tmp2 * f.grad() + tmp3 * g.grad() };
+	return{ tmp1, tmp2 * f.grad() + tmp3 * g.grad() };
 	}*/
 
 	// pow -- base is a constant, exponent is a differentiable function.
@@ -873,10 +744,139 @@ namespace TwoAC
 		return Dual_Number<T, N>(tmp1, tmp2 * f.grad() + tmp3 * g.grad());
 	}
 
-	template <typename T, int N>
-	inline std::ostream &operator<<(std::ostream &s, const Dual_Number<T, N>& z) {
-		return s << "[" << z.f() << " ; " << z.grad().transpose() << "]";
+#pragma endregion
+
+#pragma region Bessel
+
+	// Bessel functions of the first kind with integer order equal to 0, 1, n.
+	//
+	// Microsoft has deprecated the j[0,1,n]() POSIX Bessel functions in favour of
+	// _j[0,1,n]().  Where available on MSVC, use _j[0,1,n]() to avoid deprecated
+	// function errors in client code (the specific warning is suppressed when
+	// Ceres itself is built).
+	inline double BesselJ0(double x) {
+#if defined(_MSC_VER) && _MSC_VER >= 1800
+		return _j0(x);
+#else
+		return j0(x);
+#endif
 	}
+	inline double BesselJ1(double x) {
+#if defined(_MSC_VER) && _MSC_VER >= 1800
+		return _j1(x);
+#else
+		return j1(x);
+#endif
+	}
+	inline double BesselJn(int n, double x) {
+#if defined(_MSC_VER) && _MSC_VER >= 1800
+		return _jn(n, x);
+#else
+		return jn(n, x);
+#endif
+	}
+
+	// For the formulae of the derivatives of the Bessel functions see the book:
+	// Olver, Lozier, Boisvert, Clark, NIST Handbook of Mathematical Functions,
+	// Cambridge University Press 2010.
+	//
+	// Formulae are also available at http://dlmf.nist.gov
+
+	// See formula http://dlmf.nist.gov/10.6#E3
+	// j0(a + h) ~= j0(a) - j1(a) h
+	template <typename T, int N> inline
+		Dual_Number<T, N> BesselJ0(const Dual_Number<T, N>& f) {
+		return{ BesselJ0(f.f()), -BesselJ1(f.f()) * f.grad() };
+	}
+
+	// See formula http://dlmf.nist.gov/10.6#E1
+	// j1(a + h) ~= j1(a) + 0.5 ( j0(a) - j2(a) ) h
+	template <typename T, int N> inline
+		Dual_Number<T, N> BesselJ1(const Dual_Number<T, N>& f) {
+		return{ BesselJ1(f.f()),
+			T(0.5) * (BesselJ0(f.f()) - BesselJn(2, f.f())) * f.grad() };
+	}
+
+	// See formula http://dlmf.nist.gov/10.6#E1
+	// j_n(a + h) ~= j_n(a) + 0.5 ( j_{n-1}(a) - j_{n+1}(a) ) h
+	template <typename T, int N> inline
+		Dual_Number<T, N> BesselJn(int n, const Dual_Number<T, N>& f) {
+		return{ BesselJn(n, f.f()),
+			T(0.5) * (BesselJn(n - 1, f.f()) - BesselJn(n + 1, f.f())) * f.grad() };
+	}
+
+#pragma endregion
+
+#pragma region Dual Number classification
+	// Classification. It is not clear what the appropriate semantics are for
+	// these classifications. This picks that IsFinite and isnormal are "all"
+	// operations, i.e. all elements of the jet must be finite for the jet itself
+	// to be finite (or normal). For IsNaN and IsInfinite, the answer is less
+	// clear. This takes a "any" approach for IsNaN and IsInfinite such that if any
+	// part of a jet is nan or inf, then the entire jet is nan or inf. This leads
+	// to strange situations like a jet can be both IsInfinite and IsNaN, but in
+	// practice the "any" semantics are the most useful for e.g. checking that
+	// derivatives are sane.
+
+	// The jet is finite if all parts of the jet are finite.
+	template <typename T, int N> inline
+		bool isfinite(const Dual_Number<T, N>& f) {
+		if (!isfinite(f.f())) {
+			return false;
+		}
+		for (int i = 0; i < N; ++i) {
+			if (!isfinite(f.grad()[i])) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+
+	// The jet is infinite if any part of the jet is infinite.
+	template <typename T, int N> inline
+		bool isinf(const Dual_Number<T, N>& f) {
+		if (isinf(f.f())) {
+			return true;
+		}
+		for (int i = 0; i < N; i++) {
+			if (isinf(f.grad()[i])) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// The jet is NaN if any part of the jet is NaN.
+	template <typename T, int N> inline
+		bool isnan(const Dual_Number<T, N>& f) {
+		if (isnan(f.f())) {
+			return true;
+		}
+		for (int i = 0; i < N; ++i) {
+			if (isnan(f.grad()[i])) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// The jet is normal if all parts of the jet are normal.
+	template <typename T, int N> inline
+		bool isnormal(const Dual_Number<T, N>& f) {
+		if (!isnormal(f.f())) {
+			return false;
+		}
+		for (int i = 0; i < N; ++i) {
+			if (!isnormal(f.grad()[i])) {
+				return false;
+			}
+		}
+		return true;
+	}
+#pragma endregion
+
+#pragma region Differentiation
 
 	template <typename T, int N, int M, typename FUN>
 	void gradient(
@@ -899,27 +899,6 @@ namespace TwoAC
 			grad.row(i) = f[i].grad();
 		}
 	}
-
-	/*template <typename T, int N, int M, typename FUN>
-	void gradient(
-		const FUN& OP,
-		const Eigen::Matrix<T, N, 1>& param,
-		Eigen::Matrix<T, M, N>& grad)
-	{
-		Eigen::Matrix<Dual_Number<T, N>, N, 1> val;
-
-		for (auto i = 0; i < N; ++i)
-		{
-			val[i].setPartial(param[i], i);
-		}
-
-		Eigen::Matrix<Dual_Number<T, N>, M, 1> f = OP(val);
-
-		for (auto i = 0; i < M; ++i)
-		{
-			grad.row(i) = f[i].grad();
-		}
-	}*/
 
 	template <typename V, typename FUN>
 	void derivative(const FUN& OP, const V& param, V& value, V& grad)
@@ -996,7 +975,6 @@ namespace TwoAC
 			dn_param[i].setPartial(param[i], i); \
 		return this->operator()(dn_param);  \
 	}
-}
 
 #define OPERATOR_SCALAR_SCALAR(EXPRESSION) \
 	template <typename T> T operator()(const T& x) const { \
@@ -1025,6 +1003,14 @@ struct TYPENAME { \
 struct TYPENAME { \
 	OPERATOR_VECTOR_VECTOR(N, M, EXPRESSION) \
 	DEFINE_VECTOR_GRADIENT(N,M)\
+}
+
+#pragma endregion
+
+	template <typename T, int N>
+	inline std::ostream &operator<<(std::ostream &s, const Dual_Number<T, N>& z) {
+		return s << "[" << z.f() << " ; " << z.grad().transpose() << "]";
+	}
 }
 
 namespace Eigen {
