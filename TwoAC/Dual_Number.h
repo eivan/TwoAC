@@ -7,62 +7,76 @@
 
 namespace TwoAC
 {
-	
+	// Dual Number class for automatic differentiation
 	template<typename T, int N>
 	class Dual_Number
 	{
-	public:
-		enum { DIMENSION = N };
+	protected:
+		// Value part.
+		T f_;
 
-#define this_is_CPP11 (__cplusplus >= 201103L || (__cplusplus < 200000 && __cplusplus >= 199711L))
-
+		// The infinitesimal part.
+		//
 		// We allocate Jets on the stack and other places they might not be aligned
-		// to 16-byte boundaries, which would prevent the safe use of vectorisation.
-		// If we have C++11, we can specify the alignment.  However, the standard
-		// gives wide lattitude as to what alignments are valid, and it might be that
-		// the maximum supported alignment is < 16, in which case even with C++11, we
-		// cannot specify 16-byte alignment.  If using < C++11, we cannot specify
-		// alignment.	
-#if this_is_CPP11 //For C++11, some compilers set the __cplusplus macro at 201103L and others set it at 199711L. This solution is compatible with both these cases.
+		// to X(=16 [SSE], 32 [AVX] etc)-byte boundaries, which would prevent the safe
+		// use of vectorisation.  If we have C++11, we can specify the alignment.
+		// However, the standard gives wide latitude as to what alignments are valid,
+		// and it might be that the maximum supported alignment *guaranteed* to be
+		// supported is < 16, in which case we do not specify an alignment, as this
+		// implies the host is not a modern x86 machine.  If using < C++11, we cannot
+		// specify alignment.
 
-		static constexpr size_t kMaxAlignBytes =
+#if defined(EIGEN_DONT_VECTORIZE)
+		typedef Eigen::Matrix<T, N, 1, Eigen::DontAlign> VecX;
+		Eigen::Matrix<T, N, 1, Eigen::DontAlign> grad_;
+#else
+		// Enable vectorisation iff the maximum supported scalar alignment is >=
+		// 16 bytes, as this is the minimum required by Eigen for any vectorisation.
+		//
+		// NOTE: It might be the case that we could get >= 16-byte alignment even if
+		//       max_align_t < 16.  However we can't guarantee that this
+		//       would happen (and it should not for any modern x86 machine) and if it
+		//       didn't, we could get misaligned Jets.
+		static constexpr int kAlignOrNot =
 			// Work around a GCC 4.8 bug
 			// (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=56019) where
 			// std::max_align_t is misplaced.
 #if defined (__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ == 8
-			alignof(::max_align_t);
+			alignof(::max_align_t) >= 16
 #else
-			alignof(std::max_align_t);
+			alignof(std::max_align_t) >= 16
+#endif
+			? Eigen::AutoAlign : Eigen::DontAlign;
+
+#if defined(EIGEN_MAX_ALIGN_BYTES)
+		// Eigen >= 3.3 supports AVX & FMA instructions that require 32-byte alignment
+		// (greater for AVX512).  Rather than duplicating the detection logic, use
+		// Eigen's macro for the alignment size.
+		//
+		// NOTE: EIGEN_MAX_ALIGN_BYTES can be > 16 (e.g. 32 for AVX), even though
+		//       kMaxAlignBytes will max out at 16.  We are therefore relying on
+		//       Eigen's detection logic to ensure that this does not result in
+		//       misaligned Jets.
+#define CERES_JET_ALIGN_BYTES EIGEN_MAX_ALIGN_BYTES
+#else
+		// Eigen < 3.3 only supported 16-byte alignment.
+#define CERES_JET_ALIGN_BYTES 16
 #endif
 
-		
-		static constexpr bool kShouldAlignMatrix =
-			16 <= kMaxAlignBytes;
-		static constexpr int kAlignHint = kShouldAlignMatrix ?
-			Eigen::AutoAlign : Eigen::DontAlign;
-		// Default to the native alignment of double if 16-byte alignment is not
-		// supported.  We cannot use alignof(T) as if we do, GCC complains that the
-		// alignment 'is not an integer constant', although Clang accepts it.
-		//static constexpr size_t kAlignment = kShouldAlignMatrix ? 16 : alignof(double);
-		static constexpr size_t kAlignment = kShouldAlignMatrix ? 16 : alignof(T);
+		// Default to the native alignment if 16-byte alignment is not guaranteed to
+		// be supported.  We cannot use alignof(T) as if we do, GCC 4.8 complains that
+		// the alignment 'is not an integer constant', although Clang accepts it.
+		static constexpr size_t kAlignment = kAlignOrNot == Eigen::AutoAlign
+			? CERES_JET_ALIGN_BYTES : alignof(double);
 
-		//alignas(kAlignment)Eigen::Matrix<T, N, 1, kAlignHint> v;
-		typedef Eigen::Matrix<T, N, 1, kAlignHint> VecX;
-#else
-		// fall back to safe version:
-		typedef Eigen::Matrix<T, N, 1, Eigen::DontAlign> VecX;
-#endif 
-
-/*#if defined(ENV32BIT)
-		typedef Eigen::Matrix<T, N, 1, Eigen::DontAlign> VecX;
-#else // 64 bits compiler
-		typedef Eigen::Matrix<T, N, 1> VecX;
+#undef CERES_JET_ALIGN_BYTES
+		typedef Eigen::Matrix<T, N, 1, kAlignOrNot> VecX;
+		alignas(kAlignment)Eigen::Matrix<T, N, 1, kAlignOrNot> grad_;
 #endif
-		//TODO: typedef Eigen::Matrix<T, N+1, 1> VecX;*/
+	public:
+		enum { DIMENSION = N };
 
 		Dual_Number() : f_() { grad_.setZero(); }
-		//explicit Dual_Number(const T& f) { f_ = f; grad_.setZero(); }
-		//explicit Dual_Number(const double& f) { f_ = T(f); grad_.setZero(); }
 		template<typename V>
 		explicit Dual_Number(const V& f) { f_ = T(f); grad_.setZero(); }
 		
@@ -162,18 +176,6 @@ namespace TwoAC
 		{
 			return{ f_ + rhs, grad_ };
 		}
-
-	protected:
-		// Value part.
-		T f_;
-		// The infinitesimal part.
-#if this_is_CPP11
-		alignas(kAlignment) VecX grad_;
-#else
-		VecX grad_;
-#endif
-
-#undef this_is_CPP11
 	};
 
 	// Unary +
@@ -258,7 +260,7 @@ namespace TwoAC
 		// which holds because v*v = 0.
 		const T g_a_inverse = T(1.0) / g.f();
 		const T f_a_by_g_a = f.f() * g_a_inverse;
-		return{ f.f() * g_a_inverse, (f.grad() - f_a_by_g_a * g.grad()) * g_a_inverse };
+		return{ f_a_by_g_a, (f.grad() - f_a_by_g_a * g.grad()) * g_a_inverse };
 	}
 
 	// Binary / with a scalar: s / x
@@ -326,27 +328,37 @@ namespace TwoAC
 
 #undef DEFINE_DN_COMPARISON_OPERATOR
 
-	inline double abs(double x) { return std::abs(x); }
-	inline double log(double x) { return std::log(x); }
-	inline double exp(double x) { return std::exp(x); }
-	inline double erf(double x) { return std::erf(x); }
-	inline double erfc(double x) { return std::erfc(x); }
-	//inline double erf_inv(double x) { return boost::math::erf_inv(x); }
-	//inline double erfc_inv(double x) { return boost::math::erfc_inv(x); }
-	inline double sqrt(double x) { return std::sqrt(x); }
-	inline double cos(double x) { return std::cos(x); }
-	inline double acos(double x) { return std::acos(x); }
-	inline double sin(double x) { return std::sin(x); }
-	inline double asin(double x) { return std::asin(x); }
-	inline double tan(double x) { return std::tan(x); }
-	inline double atan(double x) { return std::atan(x); }
-	inline double sinh(double x) { return std::sinh(x); }
-	inline double cosh(double x) { return std::cosh(x); }
-	inline double tanh(double x) { return std::tanh(x); }
-	inline double floor(double x) { return std::floor(x); }
-	inline double ceil(double x) { return std::ceil(x); }
-	inline double pow(double x, double y) { return std::pow(x, y); }
-	inline double atan2(double y, double x) { return std::atan2(y, x); }
+	using std::abs;
+	using std::acos;
+	using std::asin;
+	using std::atan;
+	using std::atan2;
+	using std::cbrt;
+	using std::ceil;
+	using std::cos;
+	using std::cosh;
+	using std::erf;
+	using std::erfc;
+	//using boost::math::erf_inv;
+	//using boost::math::erfc_inv;
+	using std::exp;
+	using std::exp2;
+	using std::floor;
+	using std::fmax;
+	using std::fmin;
+	using std::hypot;
+	using std::isfinite;
+	using std::isinf;
+	using std::isnan;
+	using std::isnormal;
+	using std::log;
+	using std::log2;
+	using std::pow;
+	using std::sin;
+	using std::sinh;
+	using std::sqrt;
+	using std::tan;
+	using std::tanh;
 
 	inline double normSq(double x) { return Square(x); }
 	template<typename T, int N> inline
@@ -662,17 +674,18 @@ namespace TwoAC
 
 	// The jet is finite if all parts of the jet are finite.
 	template <typename T, int N> inline
-		bool IsFinite(const Dual_Number<T, N>& f) {
-		if (!IsFinite(f.f())) {
+		bool isfinite(const Dual_Number<T, N>& f) {
+		if (!isfinite(f.f())) {
 			return false;
 		}
 		for (int i = 0; i < N; ++i) {
-			if (!IsFinite(f.grad()[i])) {
+			if (!isfinite(f.grad()[i])) {
 				return false;
 			}
 		}
 		return true;
 	}
+
 
 	// The jet is infinite if any part of the jet is infinite.
 	template <typename T, int N> inline
@@ -859,23 +872,6 @@ namespace TwoAC
 		T const tmp3 = tmp1 * log(f.f());
 		return Dual_Number<T, N>(tmp1, tmp2 * f.grad() + tmp3 * g.grad());
 	}
-
-	template<typename T, int N> inline const Dual_Number<T, N>& ei_conj(const Dual_Number<T, N>& x) { return x; }  // NOLINT
-	template<typename T, int N> inline const Dual_Number<T, N>& ei_real(const Dual_Number<T, N>& x) { return x; }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_imag(const Dual_Number<T, N>&) { return Dual_Number<T, N>(0.0); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_abs(const Dual_Number<T, N>& x) { return fabs(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_abs2(const Dual_Number<T, N>& x) { return x * x; }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_sqrt(const Dual_Number<T, N>& x) { return sqrt(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_exp(const Dual_Number<T, N>& x) { return exp(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_log(const Dual_Number<T, N>& x) { return log(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_sin(const Dual_Number<T, N>& x) { return sin(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_cos(const Dual_Number<T, N>& x) { return cos(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_tan(const Dual_Number<T, N>& x) { return tan(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_atan(const Dual_Number<T, N>& x) { return atan(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_sinh(const Dual_Number<T, N>& x) { return sinh(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_cosh(const Dual_Number<T, N>& x) { return cosh(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_tanh(const Dual_Number<T, N>& x) { return tanh(x); }  // NOLINT
-	template<typename T, int N> inline       Dual_Number<T, N>  ei_pow(const Dual_Number<T, N>& x, Dual_Number<T, N> y) { return pow(x, y); }  // NOLINT
 
 	template <typename T, int N>
 	inline std::ostream &operator<<(std::ostream &s, const Dual_Number<T, N>& z) {
