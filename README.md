@@ -26,7 +26,7 @@ Third-party libraries
 
 Included with the repository:
 - Eigen
-- TheiaSfM (Modified, added LO+)
+- [TheiaSfM](https://github.com/sweeneychris/TheiaSfM) (Modified, added [LO+](http://cmp.felk.cvut.cz/software/LO-RANSAC/Lebeda-2012-Fixing_LORANSAC-BMVC.pdf))
 - glog
 - gflags
 
