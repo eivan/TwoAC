@@ -47,7 +47,7 @@ int main(int argc, char* argv[])
 	// Try loading Affine Correspondences ...
 	try {
 		if (argc != 2) {
-			throw new std::runtime_error("Invalid number of commandline arguments");
+			throw std::runtime_error("Invalid number of commandline arguments");
 		}
 
 		std::string base_path = argv[1];
